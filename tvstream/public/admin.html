@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin - My Live TV</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="admin-container" id="loginContainer">
+    <div class="card">
+      <h2>Admin Login</h2>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" required autocomplete="current-password" />
+        </div>
+        <p class="error" id="loginError"></p>
+        <button type="submit" class="btn btn-primary">Login</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="admin-container" id="dashboardContainer" style="display: none;">
+    <div class="card dashboard">
+      <h2>Admin Dashboard</h2>
+      <div class="status-row">
+        <span class="status-label">Status:</span>
+        <span class="status-indicator" id="statusIndicator">
+          <span class="dot offline"></span> OFFLINE
+        </span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Stream Key:</span>
+        <code id="streamKey">tvstream</code>
+        <button id="copyKeyBtn" class="btn btn-small">Copy</button>
+      </div>
+      <div class="info-row">
+        <span class="info-label">RTMP URL:</span>
+        <code id="rtmpUrl">rtmp://localhost:1935/live</code>
+        <button id="copyUrlBtn" class="btn btn-small">Copy</button>
+      </div>
+      <div class="info-row">
+        <span class="info-label">HLS URL:</span>
+        <code id="hlsUrl">http://localhost:3000/hls/live/tvstream/index.m3u8</code>
+      </div>
+      <button id="logoutBtn" class="btn btn-outline">Logout</button>
+    </div>
+  </div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>
