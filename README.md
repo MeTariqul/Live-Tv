@@ -2,25 +2,31 @@
 
 A split-architecture live streaming platform:
 - **Frontend**: Static site deployed on Vercel
-- **Backend**: Python FastAPI server (deployable on Railway, Render, VPS, or Docker)
+- **Backend**: Choose one of two options:
+  1. **Node.js + Nginx RTMP** (self-hosted on Railway, Render, VPS, or Docker) — traditional RTMP ingest with HLS output
+  2. **Python + Mux** (serverless on Vercel) — cloud-managed streaming with Mux.com
 
-## Architecture
+## Architecture Options
+
+### Option 1: Node.js + Nginx RTMP (Self-Hosted)
 
 ```
-OBS → RTMP → Nginx (RTMP module) → HLS → FastAPI Backend → Frontend (Vercel) → Viewers
-                                              ↑
-                                         WebSocket (viewer count, chat)
+OBS → RTMP → Nginx (RTMP module) → HLS → Node.js Backend → Frontend (Vercel) → Viewers
+                                                              ↑
+                                                         Socket.IO (viewer count, chat)
 ```
 
-## Prerequisites
+### Option 2: Python + Mux (Serverless on Vercel)
 
-- **Vercel** account (for frontend)
-- **Backend hosting** supporting Python 3.10+ and long-running processes (Railway, Render, VPS)
-- **Nginx** with RTMP module installed on the backend host
-- **ffmpeg** installed on the backend host
-- **OBS Studio** for broadcasting
+```
+OBS → RTMP → Mux Cloud → HLS → Python Backend (Vercel) → Frontend (Vercel) → Viewers
+                                                              ↑
+                                                   Polling (viewer count via Vercel KV)
+```
 
-## Project Structure
+## Frontend (Shared)
+
+The static frontend works with **either** backend. Deploy to Vercel:
 
 ```
 live-stream-platform/
@@ -36,89 +42,66 @@ live-stream-platform/
 │   │   └── admin.js
 │   ├── inject-env.js        # Vercel build script
 │   └── vercel.json          # Vercel config
-├── backend/                  # Deploy separately
-│   ├── main.py
-│   ├── config.py
-│   ├── models.py
-│   ├── state.py
-│   ├── connection_manager.py
-│   ├── routers/
-│   │   ├── __init__.py
-│   │   ├── auth.py
-│   │   ├── stream.py
-│   │   ├── internal.py
-│   │   └── websocket.py
-│   ├── nginx.conf.j2
-│   ├── generate_nginx_config.py
-│   ├── generate_hash.py
-│   ├── requirements.txt
-│   ├── .env.example
-│   ├── Dockerfile
-│   └── docker-compose.yml
-├── .gitignore
-├── inject-env.js            # Root build script
-└── README.md
 ```
-
-## Local Development
-
-### Backend Security Setup
-
-1. Generate a bcrypt hash for your admin password:
-   ```bash
-   cd backend
-   python generate_hash.py YourSecurePassword
-   ```
-   Copy the output (e.g. `ADMIN_PASS_HASH=$2b$12$...`).
-
-2. Generate a secure session secret (64+ characters):
-   ```bash
-   python -c "import secrets; print(secrets.token_hex(64))"
-   ```
-
-3. Copy `.env.example` to `.env` and fill in:
-   - `ADMIN_USER` – your admin username
-   - `ADMIN_PASS_HASH` – the bcrypt hash from step 1
-   - `SESSION_SECRET` – the random string from step 2
-   - `FRONTEND_ORIGIN` – your Vercel app URL (e.g. `https://your-app.vercel.app`)
-   - `ENVIRONMENT` – `production` in production
-
-4. Install dependencies and start:
-   ```bash
-   pip install -r requirements.txt
-   python main.py
-   ```
-
-5. (Optional) Generate Nginx config:
-   ```bash
-   python generate_nginx_config.py
-   ```
-
-### Nginx Configuration
-
-The backend includes a Jinja2 template (`nginx.conf.j2`). Render it with `python generate_nginx_config.py` and deploy to `/etc/nginx/nginx.conf` or use Docker Compose.
-
-Key Nginx settings:
-- RTMP listen: `{{ rtmp_port }}` (default 1935)
-- HLS path: `{{ hls_path }}/live/{{ stream_key }}`
-- Internal webhooks: `http://127.0.0.1:{{ http_port }}/api/internal/stream-start` and `stream-stop`
 
 ### Frontend Deployment
 
 1. In Vercel Dashboard, set environment variables:
-   - `API_BASE_URL` = your backend URL (e.g. `https://your-backend.railway.app`)
+   - `API_BASE_URL` = your backend URL
    - `NODE_ENV` = `production`
 
 2. Set Root Directory to `frontend` and deploy.
 
-### OBS Configuration (Max 720p @ 30fps)
+## Option 1: Node.js + Nginx RTMP Backend
+
+### Project Structure
+
+```
+backend/
+├── server.js
+├── package.json
+├── docker-compose.yml
+├── Dockerfile
+├── generate-hash.js
+├── start.sh
+├── .env.example
+└── media/hls/
+```
+
+### Local Development
+
+1. Generate a bcrypt hash for your admin password:
+   ```bash
+   cd backend
+   node generate-hash.js YourSecurePassword
+   ```
+
+2. Generate a secure session secret (64+ characters):
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+   ```
+
+3. Copy `.env.example` to `.env` and fill in the values.
+
+4. Install dependencies and start:
+   ```bash
+   npm install
+   node server.js
+   ```
+
+5. (Optional) Start with Docker:
+   ```bash
+   docker-compose up -d --build
+   ```
+
+### OBS Configuration
 
 1. Open OBS → **Settings** → **Stream**
 2. Set **Service** to **Custom**
 3. Set **Server** to `rtmp://<your-backend-host>:1935/live`
 4. Set **Stream Key** to `mystream` (or your custom key)
 
-**Limit resolution and framerate:**
+**Limit to 720p @ 30fps:**
 - **Settings → Output → Simple mode:**
   - **Scaled Output Resolution**: `1280x720`
   - **FPS**: `30`
@@ -129,9 +112,7 @@ Key Nginx settings:
   - **Video → FPS**: `30`
   - **Video → Keyframe Interval**: `1s`
 
-5. Click **Apply** and start streaming
-
-## API Endpoints
+### API Endpoints (Node.js)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -139,54 +120,115 @@ Key Nginx settings:
 | POST | `/api/logout` | No | Destroy session |
 | GET | `/api/stream-status` | No | Returns `{ isLive, viewers }` |
 | GET | `/api/stream-key` | Admin | Returns `{ streamKey, rtmpUrl }` |
-| POST | `/api/internal/stream-start` | Localhost | Nginx webhook: stream started |
-| POST | `/api/internal/stream-stop` | Localhost | Nginx webhook: stream stopped |
 
-## WebSocket Events
+---
 
-| Event | Direction | Description |
-|-------|-----------|-------------|
-| `{"action": "join_viewer"}` | Client → Server | Join viewer room |
-| `{"action": "join_admin"}` | Client → Server | Join admin room (requires auth) |
-| `{"type": "viewerCount", "count": N}` | Server → Client | Real-time viewer count |
-| `{"type": "streamStatus", "isLive": bool}` | Server → Client | Stream went live/offline |
-| `{"action": "chat", "nickname": "...", "message": "..."}` | Client → Server | Send chat message (admin only) |
-| `{"type": "chatMessage", ...}` | Server → Client | Receive chat message |
+## Option 2: Python + Mux Backend (Vercel Serverless)
 
-## Environment Variables
+### Project Structure
 
-Copy `backend/.env.example` to `backend/.env`:
+```
+vercel-backend/
+├── api/
+│   └── index.py            # Mangum Lambda handler
+├── main.py                 # FastAPI app
+├── config.py               # Pydantic settings
+├── models.py               # Request/response models
+├── mux_client.py           # Mux API client
+├── kv_client.py            # Vercel KV (Redis) client
+├── requirements.txt
+├── vercel.json             # Vercel deployment config
+└── .env.example
+```
 
-- `ADMIN_USER` — admin username (default `admin`)
-- `ADMIN_PASS_HASH` — **bcrypt hash** of admin password. Generate with `python generate_hash.py <password>`
-- `STREAM_KEY` — default RTMP stream key
-- `HTTP_PORT` — backend HTTP port (default 3000)
-- `RTMP_PORT` — backend RTMP port (default 1935)
-- `SESSION_SECRET` — **mandatory**, 64+ random characters
-- `FRONTEND_ORIGIN` — your Vercel domain for CORS (required in production)
-- `RTMP_PUBLIC_URL` — public RTMP URL (e.g. `rtmp://your-server.com:1935/live`)
-- `FFMPEG_PATH` — path to ffmpeg
-- `ENVIRONMENT` — `production` for HTTPS cookies
-- `HLS_PATH` — directory for Nginx HLS output
+### Prerequisites
 
-## Security Features
+- **Vercel** account (for backend + frontend)
+- **Mux** account (free tier available at https://mux.com)
+- **Vercel KV** (Redis) integration added to the backend project
+- **OBS Studio** for broadcasting
 
-- **Bcrypt password hashing** — plaintext passwords are never stored
-- **Rate limiting** — 5 login attempts per 15 minutes per IP; 100 API requests per 15 minutes (via slowapi)
-- **Security headers** — CSP, HSTS, XSS protection, nosniff, frame-options
-- **Strict CORS** — only `FRONTEND_ORIGIN` allowed, credentials required
-- **Session hardening** — `httponly`, `secure` (production), `sameSite='none'`
-- **Input validation** — all inputs validated via Pydantic models
-- **RTMP stream key validation** — Nginx `on_publish` hook validates against Python backend
-- **Global error handler** — no stack traces exposed in production
+### Local Development
+
+1. Generate a bcrypt hash for your admin password:
+   ```bash
+   python -c "import bcrypt; print(bcrypt.hashpw('YourPassword'.encode(), bcrypt.gensalt()).decode())"
+   ```
+
+2. Generate a secure JWT secret (64+ characters):
+   ```bash
+   python -c "import secrets; print(secrets.token_hex(64))"
+   ```
+
+3. Copy `.env.example` to `.env` and fill in:
+   - `ADMIN_USER` – your admin username
+   - `ADMIN_PASS_HASH` – the bcrypt hash from step 1
+   - `JWT_SECRET` – the random string from step 2
+   - `MUX_TOKEN_ID` / `MUX_TOKEN_SECRET` – from Mux dashboard
+   - `MUX_WEBHOOK_SECRET` – a random string for webhook validation
+   - `FRONTEND_ORIGIN` – your Vercel app URL
+   - `KV_REST_API_URL` / `KV_REST_API_TOKEN` – from Vercel KV integration
+
+4. Install dependencies and start:
+   ```bash
+   pip install -r requirements.txt
+   python -m uvicorn main:app --host 0.0.0.0 --port 3000
+   ```
+
+### Deploy to Vercel
+
+1. In Vercel Dashboard, import the `vercel-backend/` folder as a new project.
+2. Set Root Directory to `vercel-backend`.
+3. Add all environment variables from `.env.example`.
+4. Add the **Vercel KV** integration to the project.
+5. Deploy.
+
+### Mux Webhook Configuration
+
+In your Mux dashboard, set the webhook URL to:
+```
+https://your-backend.vercel.app/api/mux/webhook
+```
+
+Set the webhook secret to match `MUX_WEBHOOK_SECRET`.
+
+### OBS Configuration
+
+1. Open OBS → **Settings** → **Stream**
+2. Set **Service** to **Custom**
+3. Set **Server** to the RTMP URL from Mux (provided by `/api/create-stream`)
+4. Set **Stream Key** to the key from Mux
+5. Set **Output Resolution**: `1280x720`, **FPS**: `30`, **Keyframe Interval**: `1s`
+
+### API Endpoints (Python/Mux)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/login` | No | JWT login (bcrypt) |
+| POST | `/api/logout` | No | Clear JWT cookie |
+| GET | `/api/stream-status` | No | Returns `{ isLive, viewers, hls_url }` |
+| GET | `/api/stream-key` | Admin | Returns `{ streamKey, rtmpUrl, playbackUrl, status }` |
+| POST | `/api/create-stream` | Admin | Create new Mux live stream |
+| POST | `/api/delete-stream` | Admin | Delete current Mux live stream |
+| POST | `/api/heartbeat` | No | Viewer heartbeat for count tracking |
+| POST | `/api/mux/webhook` | No | Mux status webhook (signature verified) |
+
+## Security Features (Both Backends)
+
+- **Bcrypt password hashing** — plaintext passwords never stored
+- **Rate limiting** — brute-force protection on login
+- **Security headers** — CSP, HSTS, XSS protection
+- **Strict CORS** — only frontend origin allowed, credentials required
+- **Session/JWT hardening** — httpOnly, secure (production), sameSite='none'
+- **Input validation** — Pydantic models (Python) or manual checks (Node.js)
+- **Global error handler** — no stack traces in production
 
 ## Troubleshooting
 
-- **CORS / cookies not working**: Ensure `FRONTEND_ORIGIN` matches your Vercel domain exactly (no trailing slash). Verify `ENVIRONMENT=production` sets secure cookies.
-- **ffmpeg not found**: Install ffmpeg or set `FFMPEG_PATH`.
-- **HLS not loading**: Check that `HLS_PATH` exists and Nginx can write to it. Verify stream key matches.
-- **RTMP connection refused**: Ensure Nginx is running and listening on `RTMP_PORT`.
-- **WebSocket fails**: Ensure backend allows your Vercel origin in CORS settings.
+- **CORS / cookies not working**: Ensure `FRONTEND_ORIGIN` matches your Vercel domain exactly.
+- **Mux webhook not firing**: Check that the webhook URL is publicly accessible and the secret matches.
+- **KV connection errors**: Verify Vercel KV integration credentials in environment variables.
+- **RTMP connection refused** (Node.js): Ensure Nginx is running on port 1935.
 
 ## License
 
