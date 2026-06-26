@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin - My Live TV</title>
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div class="admin-container" id="loginContainer">
@@ -27,31 +27,19 @@
 
   <div class="admin-container" id="dashboardContainer" style="display: none;">
     <div class="card dashboard">
-      <h2>Admin Dashboard</h2>
-      <div class="status-row">
-        <span class="status-label">Status:</span>
-        <span class="status-indicator" id="statusIndicator">
-          <span class="dot offline"></span> OFFLINE
-        </span>
+      <h2>Admin Panel</h2>
+      <div class="create-form">
+        <input type="text" id="channelName" placeholder="Channel name" maxlength="50" />
+        <button id="createBtn" class="btn btn-primary">Create Channel</button>
       </div>
-      <div class="info-row">
-        <span class="info-label">Stream Key:</span>
-        <code id="streamKey">tvstream</code>
-        <button id="copyKeyBtn" class="btn btn-small">Copy</button>
-      </div>
-      <div class="info-row">
-        <span class="info-label">RTMP URL:</span>
-        <code id="rtmpUrl">rtmp://localhost:1935/live</code>
-        <button id="copyUrlBtn" class="btn btn-small">Copy</button>
-      </div>
-      <div class="info-row">
-        <span class="info-label">HLS URL:</span>
-        <code id="hlsUrl">http://localhost:3000/hls/live/tvstream/index.m3u8</code>
-      </div>
+      <div class="channels-list" id="channelsList"></div>
       <button id="logoutBtn" class="btn btn-outline">Logout</button>
     </div>
   </div>
 
-  <script src="/js/admin.js"></script>
+  <script>
+    window.BACKEND_URL = 'http://localhost:3000';
+  </script>
+  <script src="js/admin.js"></script>
 </body>
 </html>

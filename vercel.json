@@ -1,5 +1,0 @@
-{
-  "buildCommand": "node inject-env.js",
-  "outputDirectory": "frontend",
-  "cleanUrls": true
-}

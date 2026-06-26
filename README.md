@@ -1,235 +1,161 @@
-# Live Streaming Platform with OBS and Vercel Frontend
+# Multi-Channel Live TV Platform
 
-A split-architecture live streaming platform:
-- **Frontend**: Static site deployed on Vercel
-- **Backend**: Choose one of two options:
-  1. **Node.js + Nginx RTMP** (self-hosted on Railway, Render, VPS, or Docker) — traditional RTMP ingest with HLS output
-  2. **Python + Mux** (serverless on Vercel) — cloud-managed streaming with Mux.com
+A production-ready online TV streaming platform deployed on Vercel. Single admin creates and manages multiple live channels via Mux; viewers watch live broadcasts with instant channel switching.
 
-## Architecture Options
+## Features
 
-### Option 1: Node.js + Nginx RTMP (Self-Hosted)
+- Multi-channel TV streaming via Mux (RTMP ingest → HLS playback)
+- Admin panel for creating/deleting channels
+- Viewer page with live channel selector
+- Full-screen video player (hls.js)
+- Offline detection with friendly UI
+- JWT authentication, rate limiting, CORS protection
+- Serverless architecture (Vercel + Vercel KV)
 
-```
-OBS → RTMP → Nginx (RTMP module) → HLS → Node.js Backend → Frontend (Vercel) → Viewers
-                                                              ↑
-                                                         Socket.IO (viewer count, chat)
-```
+## Prerequisites
 
-### Option 2: Python + Mux (Serverless on Vercel)
+- [Vercel](https://vercel.com) account
+- [Mux](https://mux.com) account (free tier available)
+- Python 3.9+ (for local testing)
+- [Vercel CLI](https://vercel.com/cli): `npm i -g vercel`
 
-```
-OBS → RTMP → Mux Cloud → HLS → Python Backend (Vercel) → Frontend (Vercel) → Viewers
-                                                              ↑
-                                                   Polling (viewer count via Vercel KV)
-```
+## Mux Setup
 
-## Frontend (Shared)
+1. Go to [Mux Dashboard](https://dashboard.mux.com) → **Settings** → **API Access Tokens**.
+2. Create a new token with **Read** and **Write** permissions for Live Streams.
+3. Copy the **Token ID** and **Token Secret**.
+4. Generate a webhook signing secret (you'll need this later):
 
-The static frontend works with **either** backend. Deploy to Vercel:
+   ```bash
+   openssl rand -hex 32
+   ```
 
-```
-live-stream-platform/
-├── frontend/                 # Deploy to Vercel
-│   ├── index.html
-│   ├── admin/
-│   │   ├── index.html
-│   │   └── dashboard.html
-│   ├── css/style.css
-│   ├── js/
-│   │   ├── config.js
-│   │   ├── viewer.js
-│   │   └── admin.js
-│   ├── inject-env.js        # Vercel build script
-│   └── vercel.json          # Vercel config
+   Keep this value safe; you'll paste it into both Mux and the backend env.
+
+## Admin Password
+
+The default admin username is `admin`. Generate a bcrypt hash for the password `Admin@123` (or choose your own):
+
+```bash
+python -c "import bcrypt; print(bcrypt.hashpw(b'Admin@123', bcrypt.gensalt(12)).decode())"
 ```
 
-### Frontend Deployment
+Copy the full `$2b$12$...` output into the `ADMIN_PASS_HASH` env var.
 
-1. In Vercel Dashboard, set environment variables:
-   - `API_BASE_URL` = your backend URL
-   - `NODE_ENV` = `production`
+## Backend Deployment
 
-2. Set Root Directory to `frontend` and deploy.
+1. **Create a new Vercel project** for the backend (or use the dashboard to import the `/backend` folder).
 
-## Option 1: Node.js + Nginx RTMP Backend
+2. **Link Vercel KV**:
+   - In your Vercel project → **Storage** → **Create KV Database**.
+   - After creation, Vercel automatically injects environment variables like `KV_URL`, `KV_REST_API_URL`, and `KV_REST_API_TOKEN`. No manual config is needed if you use the Vercel KV integration.
 
-### Project Structure
+3. **Set environment variables** in the Vercel dashboard (**Settings → Environment Variables**):
 
-```
-backend/
-├── server.js
-├── package.json
-├── docker-compose.yml
-├── Dockerfile
-├── generate-hash.js
-├── start.sh
-├── .env.example
-└── media/hls/
-```
+   | Variable | Example / How to generate |
+   |---|---|
+   | `ADMIN_USER` | `admin` |
+   | `ADMIN_PASS_HASH` | `$2b$12$...` (see above) |
+   | `JWT_SECRET` | 64+ random chars (`openssl rand -hex 32`) |
+   | `MUX_TOKEN_ID` | from Mux dashboard |
+   | `MUX_TOKEN_SECRET` | from Mux dashboard |
+   | `MUX_WEBHOOK_SECRET` | same secret used for the Mux webhook |
+   | `FRONTEND_ORIGIN` | `https://your-frontend.vercel.app` |
+   | `ENVIRONMENT` | `production` |
 
-### Local Development
+4. **Deploy** from the `/backend` directory:
 
-1. Generate a bcrypt hash for your admin password:
    ```bash
    cd backend
-   node generate-hash.js YourSecurePassword
+   vercel --prod
    ```
 
-2. Generate a secure session secret (64+ characters):
+5. Note the backend URL (e.g., `https://my-tv-backend.vercel.app`). You'll need it for the frontend.
+
+## Frontend Deployment
+
+1. Edit the two frontend JS files and replace `http://localhost:3000` with your backend URL:
+
+   - `frontend/js/viewer.js`
+   - `frontend/js/admin.js`
+
+   ```javascript
+   window.BACKEND_URL = 'https://my-tv-backend.vercel.app';
+   ```
+
+2. Deploy the `frontend/` folder as a **separate Vercel project**:
+
    ```bash
-   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+   cd frontend
+   vercel --prod
    ```
 
-3. Copy `.env.example` to `.env` and fill in the values.
+3. Update the backend's `FRONTEND_ORIGIN` environment variable to match the frontend URL if it changed.
 
-4. Install dependencies and start:
-   ```bash
-   npm install
-   node server.js
-   ```
+## Configure Mux Webhook
 
-5. (Optional) Start with Docker:
-   ```bash
-   docker-compose up -d --build
-   ```
+After both frontend and backend are deployed:
 
-### OBS Configuration
+1. In Mux Dashboard → **Settings** → **Webhooks**.
+2. Add a new webhook:
+   - **URL**: `https://my-tv-backend.vercel.app/api/webhook/mux`
+   - **Signing Secret**: paste the same `MUX_WEBHOOK_SECRET` value
+   - **Events**: `live_stream.connected`, `live_stream.disconnected`, `live_stream.idle`
+3. Save.
 
-1. Open OBS → **Settings** → **Stream**
-2. Set **Service** to **Custom**
-3. Set **Server** to `rtmp://<your-backend-host>:1935/live`
-4. Set **Stream Key** to `mystream` (or your custom key)
+## Using the Platform
 
-**Limit to 720p @ 30fps:**
-- **Settings → Output → Simple mode:**
-  - **Scaled Output Resolution**: `1280x720`
-  - **FPS**: `30`
-  - **Keyframe Interval**: `1 second`
+1. Open the **frontend URL** in your browser (viewer page). It will show "Channel Offline" until channels are created.
+2. Open the **admin panel** at `https://your-frontend.vercel.app/admin.html`.
+3. Log in with `admin` / `Admin@123` (or your chosen password).
+4. Click **Create Channel**, enter a name (e.g., "News"), and submit.
+5. Copy the **Stream Key** and **RTMP URL** shown in the dashboard.
+6. In **OBS Studio**:
+   - Settings → Stream → Service: **Custom**
+   - Server: paste the RTMP URL
+   - Stream Key: paste the Stream Key
+   - Click **Start Streaming**
+7. Return to the viewer page — the channel should appear as **LIVE** within seconds.
+8. Create additional channels to build a multi-channel lineup; viewers switch between them using the top dropdown.
 
-- **Settings → Output → Advanced mode:**
-  - **Video → Output Resolution**: `1280x720`
-  - **Video → FPS**: `30`
-  - **Video → Keyframe Interval**: `1s`
-
-### API Endpoints (Node.js)
+## API Reference
 
 | Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/login` | No | Validate credentials, create session |
-| POST | `/api/logout` | No | Destroy session |
-| GET | `/api/stream-status` | No | Returns `{ isLive, viewers }` |
-| GET | `/api/stream-key` | Admin | Returns `{ streamKey, rtmpUrl }` |
+|---|---|---|---|
+| `POST` | `/api/login` | No | Admin login, sets JWT cookie |
+| `POST` | `/api/logout` | Yes | Clears auth cookie |
+| `GET` | `/api/admin/channels` | Yes | List all channels |
+| `POST` | `/api/admin/channels` | Yes | Create a new channel |
+| `DELETE` | `/api/admin/channels/{id}` | Yes | Delete a channel |
+| `GET` | `/api/channels` | No | Public channel list (viewers) |
+| `POST` | `/api/webhook/mux` | No | Mux status webhook (HMAC verified) |
 
----
+## Local Development
 
-## Option 2: Python + Mux Backend (Vercel Serverless)
-
-### Project Structure
-
-```
-vercel-backend/
-├── api/
-│   └── index.py            # Mangum Lambda handler
-├── main.py                 # FastAPI app
-├── config.py               # Pydantic settings
-├── models.py               # Request/response models
-├── mux_client.py           # Mux API client
-├── kv_client.py            # Vercel KV (Redis) client
-├── requirements.txt
-├── vercel.json             # Vercel deployment config
-└── .env.example
+```bash
+cd backend
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with your values (use localhost for FRONTEND_ORIGIN)
+python -m uvicorn main:app --reload --port 3000
 ```
 
-### Prerequisites
+Run the frontend server (in another terminal):
 
-- **Vercel** account (for backend + frontend)
-- **Mux** account (free tier available at https://mux.com)
-- **Vercel KV** (Redis) integration added to the backend project
-- **OBS Studio** for broadcasting
-
-### Local Development
-
-1. Generate a bcrypt hash for your admin password:
-   ```bash
-   python -c "import bcrypt; print(bcrypt.hashpw('YourPassword'.encode(), bcrypt.gensalt()).decode())"
-   ```
-
-2. Generate a secure JWT secret (64+ characters):
-   ```bash
-   python -c "import secrets; print(secrets.token_hex(64))"
-   ```
-
-3. Copy `.env.example` to `.env` and fill in:
-   - `ADMIN_USER` – your admin username
-   - `ADMIN_PASS_HASH` – the bcrypt hash from step 1
-   - `JWT_SECRET` – the random string from step 2
-   - `MUX_TOKEN_ID` / `MUX_TOKEN_SECRET` – from Mux dashboard
-   - `MUX_WEBHOOK_SECRET` – a random string for webhook validation
-   - `FRONTEND_ORIGIN` – your Vercel app URL
-   - `KV_REST_API_URL` / `KV_REST_API_TOKEN` – from Vercel KV integration
-
-4. Install dependencies and start:
-   ```bash
-   pip install -r requirements.txt
-   python -m uvicorn main:app --host 0.0.0.0 --port 3000
-   ```
-
-### Deploy to Vercel
-
-1. In Vercel Dashboard, import the `vercel-backend/` folder as a new project.
-2. Set Root Directory to `vercel-backend`.
-3. Add all environment variables from `.env.example`.
-4. Add the **Vercel KV** integration to the project.
-5. Deploy.
-
-### Mux Webhook Configuration
-
-In your Mux dashboard, set the webhook URL to:
-```
-https://your-backend.vercel.app/api/mux/webhook
+```bash
+cd frontend
+python -m http.server 3001
+# or: npx serve .
 ```
 
-Set the webhook secret to match `MUX_WEBHOOK_SECRET`.
+Open:
+- Viewer: `http://localhost:3001`
+- Admin: `http://localhost:3001/admin.html`
 
-### OBS Configuration
+## Security Notes
 
-1. Open OBS → **Settings** → **Stream**
-2. Set **Service** to **Custom**
-3. Set **Server** to the RTMP URL from Mux (provided by `/api/create-stream`)
-4. Set **Stream Key** to the key from Mux
-5. Set **Output Resolution**: `1280x720`, **FPS**: `30`, **Keyframe Interval**: `1s`
-
-### API Endpoints (Python/Mux)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/login` | No | JWT login (bcrypt) |
-| POST | `/api/logout` | No | Clear JWT cookie |
-| GET | `/api/stream-status` | No | Returns `{ isLive, viewers, hls_url }` |
-| GET | `/api/stream-key` | Admin | Returns `{ streamKey, rtmpUrl, playbackUrl, status }` |
-| POST | `/api/create-stream` | Admin | Create new Mux live stream |
-| POST | `/api/delete-stream` | Admin | Delete current Mux live stream |
-| POST | `/api/heartbeat` | No | Viewer heartbeat for count tracking |
-| POST | `/api/mux/webhook` | No | Mux status webhook (signature verified) |
-
-## Security Features (Both Backends)
-
-- **Bcrypt password hashing** — plaintext passwords never stored
-- **Rate limiting** — brute-force protection on login
-- **Security headers** — CSP, HSTS, XSS protection
-- **Strict CORS** — only frontend origin allowed, credentials required
-- **Session/JWT hardening** — httpOnly, secure (production), sameSite='none'
-- **Input validation** — Pydantic models (Python) or manual checks (Node.js)
-- **Global error handler** — no stack traces in production
-
-## Troubleshooting
-
-- **CORS / cookies not working**: Ensure `FRONTEND_ORIGIN` matches your Vercel domain exactly.
-- **Mux webhook not firing**: Check that the webhook URL is publicly accessible and the secret matches.
-- **KV connection errors**: Verify Vercel KV integration credentials in environment variables.
-- **RTMP connection refused** (Node.js): Ensure Nginx is running on port 1935.
-
-## License
-
-MIT
+- JWT stored in **httpOnly**, **Secure** (production), **SameSite=None** cookie.
+- Rate limiting: **5 login attempts per minute per IP**.
+- CORS restricted to `FRONTEND_ORIGIN` only.
+- Webhook signature verification prevents spoofed status updates.
+- All secrets are environment variables; never hardcoded.

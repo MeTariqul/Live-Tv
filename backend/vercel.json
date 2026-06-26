@@ -1,11 +1,11 @@
 {
   "functions": {
-    "api/index.py": {
+    "main.py": {
       "runtime": "python3.11",
       "maxDuration": 10
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
+    { "source": "/(.*)", "destination": "/main" }
   ]
 }

@@ -1,127 +1,179 @@
 (function () {
-  const config = window.APP_CONFIG || {};
-  const API_BASE_URL = config.API_BASE_URL || 'http://localhost:3000';
+  const BACKEND_URL = window.BACKEND_URL || 'http://localhost:3000';
+  const loginContainer = document.getElementById('loginContainer');
+  const dashboardContainer = document.getElementById('dashboardContainer');
+  const loginForm = document.getElementById('loginForm');
+  const loginError = document.getElementById('loginError');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const channelsList = document.getElementById('channelsList');
+  const channelNameInput = document.getElementById('channelName');
+  const createBtn = document.getElementById('createBtn');
 
-  const socket = io(API_BASE_URL, { transports: ['websocket', 'polling'] });
-  const isLoginPage = document.getElementById('loginForm') !== undefined;
-  const isDashboardPage = document.getElementById('dashboardContainer') !== undefined;
+  let pollTimer = null;
 
-  if (isLoginPage) {
-    initLoginPage();
-  } else if (isDashboardPage) {
-    initDashboard();
+  function showLogin() {
+    loginContainer.style.display = 'flex';
+    dashboardContainer.style.display = 'none';
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
-  function initLoginPage() {
-    const loginForm = document.getElementById('loginForm');
-    const loginError = document.getElementById('loginError');
+  function showDashboard() {
+    loginContainer.style.display = 'none';
+    dashboardContainer.style.display = 'flex';
+    startPolling();
+    fetchChannels();
+  }
 
-    loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      loginError.textContent = '';
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
-          credentials: 'include'
+  function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(fetchChannels, 5000);
+  }
+
+  async function apiFetch(path, options = {}) {
+    const res = await fetch(BACKEND_URL + path, {
+      ...options,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+      }
+    });
+    if (res.status === 401) {
+      showLogin();
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'Request failed');
+    }
+    return res;
+  }
+
+  async function fetchChannels() {
+    try {
+      const res = await apiFetch('/api/admin/channels');
+      const data = await res.json();
+      renderChannels(data);
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderChannels(channels) {
+    if (!channels || channels.length === 0) {
+      channelsList.innerHTML = '<div class="empty-state">No channels yet. Create one below.</div>';
+      return;
+    }
+
+    channelsList.innerHTML = '';
+    channels.forEach(ch => {
+      const isLive = ch.status === 'active';
+      const item = document.createElement('div');
+      item.className = 'channel-item';
+      item.innerHTML = `
+        <div class="channel-header">
+          <span class="channel-name">${escapeHtml(ch.name)}</span>
+          <span class="status-badge ${isLive ? 'live' : ''}">
+            <span class="dot ${isLive ? 'live' : ''}"></span>
+            ${isLive ? 'LIVE' : 'OFFLINE'}
+          </span>
+        </div>
+        <div class="info-row">
+          <div class="info-item">
+            <span class="info-label">Stream Key:</span>
+            <code id="key-${ch.id}">${escapeHtml(ch.stream_key || '')}</code>
+            <button class="btn btn-small copy-btn" data-target="key-${ch.id}">Copy</button>
+          </div>
+          <div class="info-item">
+            <span class="info-label">RTMP URL:</span>
+            <code id="rtmp-${ch.id}">${escapeHtml(ch.rtmp_url || '')}</code>
+            <button class="btn btn-small copy-btn" data-target="rtmp-${ch.id}">Copy</button>
+          </div>
+        </div>
+        <div class="channel-actions">
+          <button class="btn btn-small btn-danger delete-btn" data-id="${ch.id}">Delete</button>
+        </div>
+      `;
+      channelsList.appendChild(item);
+    });
+
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-target');
+        const el = document.getElementById(targetId);
+        if (!el) return;
+        navigator.clipboard.writeText(el.textContent).then(() => {
+          const original = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => btn.textContent = original, 1500);
+        }).catch(() => {
+          btn.textContent = 'Failed';
+          setTimeout(() => btn.textContent = 'Copy', 1500);
         });
-        const data = await res.json();
-        if (res.ok) {
-          window.location.href = 'dashboard.html';
-        } else {
-          loginError.textContent = data.error || 'Login failed';
-        }
-      } catch (err) {
-        loginError.textContent = 'Server error';
-      }
+      });
+    });
+
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        if (!confirm('Delete this channel? This cannot be undone.')) return;
+        try {
+          await apiFetch(`/api/admin/channels/${id}`, { method: 'DELETE' });
+          fetchChannels();
+        } catch (e) { alert(e.message); }
+      });
     });
   }
 
-  function initDashboard() {
-    const statusIndicator = document.getElementById('statusIndicator');
-    const viewerCountEl = document.getElementById('viewerCount');
-    const streamKeyEl = document.getElementById('streamKey');
-    const rtmpUrlEl = document.getElementById('rtmpUrl');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const copyKeyBtn = document.getElementById('copyKeyBtn');
-    const copyUrlBtn = document.getElementById('copyUrlBtn');
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 
-    checkSession();
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loginError.textContent = '';
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
 
-    logoutBtn.addEventListener('click', async () => {
-      await fetch(`${API_BASE_URL}/api/logout`, { method: 'POST', credentials: 'include' });
-      window.location.href = '../';
-    });
-
-    copyKeyBtn.addEventListener('click', () => {
-      copyToClipboard(streamKeyEl.textContent, copyKeyBtn);
-    });
-
-    copyUrlBtn.addEventListener('click', () => {
-      copyToClipboard(rtmpUrlEl.textContent, copyUrlBtn);
-    });
-
-    socket.on('viewerCount', (count) => {
-      viewerCountEl.textContent = count;
-    });
-
-    async function checkSession() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/stream-key`, { credentials: 'include' });
-        if (res.ok) {
-          loadDashboard();
-        } else {
-          window.location.href = '../';
-        }
-      } catch {
-        window.location.href = '../';
-      }
-    }
-
-    async function loadDashboard() {
-      socket.emit('joinAdmin');
-      try {
-        const [statusRes, keyRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/stream-status`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/api/stream-key`, { credentials: 'include' })
-        ]);
-        if (statusRes.ok) {
-          const status = await statusRes.json();
-          updateStatus(status.isLive, status.viewers);
-        }
-        if (keyRes.ok) {
-          const data = await keyRes.json();
-          streamKeyEl.textContent = data.streamKey;
-          rtmpUrlEl.textContent = data.rtmpUrl;
-        }
-      } catch (err) {
-        console.error('Failed to fetch stream info', err);
-      }
-    }
-
-    function updateStatus(isLive, viewers) {
-      if (isLive) {
-        statusIndicator.innerHTML = '<span class="dot live"></span> Live';
+    try {
+      const res = await fetch(BACKEND_URL + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showDashboard();
       } else {
-        statusIndicator.innerHTML = '<span class="dot offline"></span> Offline';
+        loginError.textContent = data.detail || 'Login failed';
       }
-      viewerCountEl.textContent = viewers;
+    } catch (err) {
+      loginError.textContent = 'Server error';
     }
+  });
 
-    setInterval(loadDashboard, 3000);
-  }
+  logoutBtn.addEventListener('click', async () => {
+    try {
+      await apiFetch('/api/logout', { method: 'POST' });
+    } catch (e) { /* ignore */ }
+    showLogin();
+  });
 
-  function copyToClipboard(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
-      const original = btn.textContent;
-      btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = original; }, 1500);
-    }).catch(() => {
-      btn.textContent = 'Failed';
-      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
-    });
-  }
+  createBtn.addEventListener('click', async () => {
+    const name = channelNameInput.value.trim();
+    if (!name) return;
+    try {
+      await apiFetch('/api/admin/channels', {
+        method: 'POST',
+        body: JSON.stringify({ name })
+      });
+      channelNameInput.value = '';
+      fetchChannels();
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+
+  showLogin();
 })();
