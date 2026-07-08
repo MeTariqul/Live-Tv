@@ -6,9 +6,7 @@ export const YOUTUBE_VIDEO_ID = process.env.NEXT_PUBLIC_STREAM_EMBED_ID || '';
 export const TWITCH_CHANNEL = process.env.NEXT_PUBLIC_TWITCH_CHANNEL || '';
 
 export const NAV_LINKS = [
-  { href: '/', label: 'Home' },
   { href: '/live', label: 'Live' },
-  { href: '/tv', label: 'TV Channels' },
   { href: '/schedule', label: 'Schedule' },
   { href: '/streams', label: 'Past Streams' },
   { href: '/about', label: 'About' },

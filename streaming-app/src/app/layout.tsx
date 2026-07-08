@@ -10,11 +10,11 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: {
-    default: `${SITE_NAME} - Live Streaming Platform`,
+    default: `${SITE_NAME} - Live TV Streaming`,
     template: `%s | ${SITE_NAME}`,
   },
-  description: 'Watch live streams, past broadcasts, and stay updated with the latest schedule.',
-  keywords: ['live stream', 'gaming', 'twitch', 'youtube', 'broadcast'],
+  description: 'Watch 12,000+ live TV channels from around the world. News, Sports, Movies, Music and more.',
+  keywords: ['live tv', 'iptv', 'streaming', 'tv channels', 'live streaming'],
   authors: [{ name: SITE_NAME }],
   openGraph: {
     type: 'website',
@@ -22,12 +22,12 @@ export const metadata: Metadata = {
     url: SITE_URL,
     siteName: SITE_NAME,
     title: SITE_NAME,
-    description: 'Watch live streams, past broadcasts, and stay updated.',
+    description: 'Watch 12,000+ live TV channels from around the world.',
   },
   twitter: {
     card: 'summary_large_image',
     title: SITE_NAME,
-    description: 'Watch live streams, past broadcasts, and stay updated.',
+    description: 'Watch 12,000+ live TV channels from around the world.',
   },
   robots: { index: true, follow: true },
 };

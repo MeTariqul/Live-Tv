@@ -1,119 +1,218 @@
 'use client';
 
-import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Radio, Calendar, Clock, Play, ArrowRight, Users, Zap } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Filter, Tv, Globe, Grid3X3, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAppStore } from '@/stores/app';
-import { SITE_NAME } from '@/lib/constants';
-import { formatDate } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { HLSPlayer } from '@/components/tv/hls-player';
+import { cn } from '@/lib/utils';
 
-export default function HomePage() {
-  const stream = useAppStore((s) => s.stream);
-  const schedule = useAppStore((s) => s.schedule);
-  const recordings = useAppStore((s) => s.recordings);
-  const isLive = stream.is_live;
-  const nextStream = schedule.find((s) => s.is_active);
+interface TVChannel {
+  id: string;
+  name: string;
+  logo: string;
+  category: string;
+  country: string;
+  streamUrl: string;
+}
+
+interface TVResponse {
+  channels: TVChannel[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  filters: { countries: string[]; categories: string[] };
+}
+
+const CATEGORY_ICONS: Record<string, string> = {
+  News: '📰', Sports: '⚽', Movies: '🎬', Music: '🎵', Kids: '👶',
+  Entertainment: '🎭', Education: '📚', Documentary: '🎞️', Religious: '🙏',
+  Travel: '✈️', Cooking: '🍳', Weather: '🌤️', Lifestyle: '🏠', Business: '💼',
+};
+
+export default function TVPage() {
+  const [channels, setChannels] = useState<TVChannel[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [countries, setCountries] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [playingChannel, setPlayingChannel] = useState<TVChannel | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  const fetchChannels = useCallback(async (p: number) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(p), limit: '100' });
+      if (search) params.set('search', search);
+      if (selectedCountry) params.set('country', selectedCountry);
+      if (selectedCategory) params.set('category', selectedCategory);
+      const res = await fetch(`/api/tv/channels?${params}`);
+      const data: TVResponse = await res.json();
+      setChannels(data.channels);
+      setTotal(data.total);
+      setTotalPages(data.totalPages);
+      if (data.filters) {
+        setCountries(data.filters.countries);
+        setCategories(data.filters.categories);
+      }
+    } catch { setChannels([]); }
+    setLoading(false);
+  }, [search, selectedCountry, selectedCategory]);
+
+  useEffect(() => { fetchChannels(page); }, [page, fetchChannels]);
+
+  useEffect(() => { setPage(1); }, [search, selectedCountry, selectedCategory]);
+
+  const clearFilters = () => { setSearch(''); setSelectedCountry(''); setSelectedCategory(''); };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      {/* Hero */}
-      <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="relative mb-12 overflow-hidden rounded-2xl bg-gradient-to-br from-red-500/10 via-background to-purple-500/10 p-8 sm:p-12">
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-4">
-            {isLive ? <Badge variant="live">LIVE NOW</Badge> : <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" /> Offline</Badge>}
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">Welcome to {SITE_NAME}</h1>
-          <p className="text-lg text-muted-foreground mb-6 max-w-2xl">{stream.description || 'Watch live streams, past broadcasts, and stay updated.'}</p>
-          <div className="flex flex-wrap gap-3">
-            {isLive ? (
-              <Link href="/live"><Button size="lg" className="bg-red-500 hover:bg-red-600 text-white"><Radio className="mr-2 h-4 w-4" /> Watch Live</Button></Link>
-            ) : nextStream ? (
-              <Link href="/schedule"><Button size="lg"><Calendar className="mr-2 h-4 w-4" /> View Schedule</Button></Link>
-            ) : null}
-            <Link href="/streams"><Button size="lg" variant="outline"><Play className="mr-2 h-4 w-4" /> Past Streams</Button></Link>
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold flex items-center gap-2"><Tv className="h-8 w-8" /> TV Channels</h1>
+            <p className="text-muted-foreground mt-1">{total.toLocaleString()} channels from around the world</p>
           </div>
         </div>
-        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-red-500/5 blur-3xl" />
-        <div className="absolute -left-20 -bottom-20 h-64 w-64 rounded-full bg-purple-500/5 blur-3xl" />
-      </motion.section>
 
-      {/* Live Preview */}
-      {isLive && (
-        <motion.section initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="mb-12">
-          <Link href="/live" className="group block">
-            <Card className="overflow-hidden border-red-500/20 hover:border-red-500/40 transition-colors">
-              <CardContent className="p-0">
-                <div className="relative aspect-video bg-muted flex items-center justify-center">
-                  <Radio className="h-16 w-16 text-red-500 animate-pulse" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-4 left-4 right-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="live">LIVE</Badge>
-                      {stream.viewer_count > 0 && <span className="flex items-center gap-1 text-xs text-white/80"><Users className="h-3 w-3" /> {stream.viewer_count.toLocaleString()}</span>}
+        {playingChannel && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-6">
+            <Card className="overflow-hidden">
+              <div className="relative">
+                <HLSPlayer src={playingChannel.streamUrl!} className="aspect-video" channelName={playingChannel.name} />
+                <button onClick={() => setPlayingChannel(null)} className="absolute top-3 right-3 rounded-full bg-black/60 p-2 text-white hover:bg-black/80 transition-colors">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  {playingChannel.logo && <img src={playingChannel.logo} alt="" className="h-10 w-10 rounded object-contain bg-muted" />}
+                  <div>
+                    <h2 className="font-bold text-lg">{playingChannel.name}</h2>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      {playingChannel.country && <span className="flex items-center gap-1"><Globe className="h-3 w-3" />{playingChannel.country}</span>}
+                      {playingChannel.category && <Badge variant="secondary" className="text-xs">{playingChannel.category}</Badge>}
                     </div>
-                    <h2 className="text-xl font-bold text-white">{stream.title}</h2>
-                    {stream.game && <p className="text-sm text-white/70">{stream.game}</p>}
                   </div>
                 </div>
               </CardContent>
             </Card>
-          </Link>
-        </motion.section>
-      )}
-
-      {/* Stats */}
-      <section className="mb-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { icon: Radio, label: 'Streams', value: recordings.length },
-          { icon: Users, label: 'Total Views', value: recordings.reduce((a, r) => a + r.view_count, 0).toLocaleString() },
-          { icon: Calendar, label: 'Schedule', value: schedule.length ? `${schedule.length} days` : 'TBD' },
-          { icon: Zap, label: 'Status', value: isLive ? 'Live' : 'Offline' },
-        ].map((stat, i) => (
-          <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.1 }}>
-            <Card><CardContent className="p-4 text-center"><stat.icon className="mx-auto h-5 w-5 text-muted-foreground mb-2" /><div className="text-2xl font-bold">{stat.value}</div><div className="text-xs text-muted-foreground">{stat.label}</div></CardContent></Card>
           </motion.div>
-        ))}
-      </section>
+        )}
 
-      {/* Schedule */}
-      {schedule.length > 0 && (
-        <section className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">Stream Schedule</h2>
-            <Link href="/schedule" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">View all <ArrowRight className="h-3 w-3" /></Link>
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search channels..." className="w-full rounded-lg border bg-background pl-10 pr-4 py-2.5 text-sm" />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {schedule.slice(0, 6).map((entry) => (
-              <Card key={entry.id}><CardContent className="p-4"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-sm">{entry.day.slice(0, 3)}</div><div><p className="font-medium text-sm">{entry.title}</p><p className="text-xs text-muted-foreground">{entry.start_time} - {entry.end_time}</p></div></div></CardContent></Card>
-            ))}
-          </div>
-        </section>
-      )}
+          <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className={cn(showFilters && 'bg-accent')}>
+            <Filter className="mr-2 h-4 w-4" />Filters
+            {(selectedCountry || selectedCategory) && <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">{(selectedCountry ? 1 : 0) + (selectedCategory ? 1 : 0)}</Badge>}
+          </Button>
+        </div>
 
-      {/* Recordings */}
-      {recordings.length > 0 && (
-        <section className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">Recent Streams</h2>
-            <Link href="/streams" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">View all <ArrowRight className="h-3 w-3" /></Link>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {recordings.slice(0, 6).map((rec) => (
-              <Link key={rec.id} href={`/streams#${rec.id}`}>
-                <Card className="overflow-hidden hover:border-primary/40 transition-colors group">
-                  <div className="relative aspect-video bg-muted flex items-center justify-center"><Play className="h-12 w-12 text-muted-foreground/30" />
-                    {rec.duration > 0 && <div className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">{Math.floor(rec.duration / 60)}:{String(rec.duration % 60).padStart(2, '0')}</div>}
+        <AnimatePresence>
+          {showFilters && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mb-6">
+              <Card>
+                <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" />Country</label>
+                    <select value={selectedCountry} onChange={(e) => setSelectedCountry(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-2 text-sm">
+                      <option value="">All Countries ({total.toLocaleString()})</option>
+                      {countries.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
                   </div>
-                  <CardContent className="p-4"><h3 className="font-medium line-clamp-1 group-hover:text-primary transition-colors">{rec.title}</h3><p className="text-xs text-muted-foreground mt-1">{formatDate(rec.created_at)}</p></CardContent>
-                </Card>
-              </Link>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block flex items-center gap-1.5"><Grid3X3 className="h-3.5 w-3.5" />Category</label>
+                    <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-2 text-sm">
+                      <option value="">All Categories</option>
+                      {categories.map((c) => <option key={c} value={c}>{CATEGORY_ICONS[c] || '📺'} {c}</option>)}
+                    </select>
+                  </div>
+                </CardContent>
+              </Card>
+              {(selectedCountry || selectedCategory) && (
+                <div className="flex gap-2 mt-3">
+                  {selectedCountry && <Badge variant="secondary" className="gap-1">{selectedCountry}<button onClick={() => setSelectedCountry('')}><X className="h-3 w-3" /></button></Badge>}
+                  {selectedCategory && <Badge variant="secondary" className="gap-1">{selectedCategory}<button onClick={() => setSelectedCategory('')}><X className="h-3 w-3" /></button></Badge>}
+                  <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs h-6">Clear all</Button>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {loading || !mounted ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {Array.from({ length: 20 }).map((_, i) => (
+              <div key={i} className="aspect-video rounded-lg bg-muted animate-pulse" />
             ))}
           </div>
-        </section>
-      )}
+        ) : channels.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+              <Tv className="h-6 w-6 text-muted-foreground/50" />
+            </div>
+            <p className="text-muted-foreground">No channels found</p>
+            <p className="text-sm text-muted-foreground/60 mt-1">Try adjusting your search or filters</p>
+            {(search || selectedCountry || selectedCategory) && <Button variant="outline" size="sm" onClick={clearFilters} className="mt-4">Clear Filters</Button>}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {channels.map((ch) => (
+              <motion.div key={ch.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.03 }}>
+                <button onClick={() => setPlayingChannel(ch)} className="w-full text-left rounded-lg border bg-card overflow-hidden transition-all hover:shadow-md hover:border-primary/50 cursor-pointer group">
+                  <div className="aspect-video bg-muted relative flex items-center justify-center">
+                    {ch.logo ? (
+                      <img src={ch.logo} alt={ch.name} className="h-full w-full object-contain p-2" />
+                    ) : (
+                      <Tv className="h-8 w-8 text-muted-foreground/30" />
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                      <div className="h-12 w-12 rounded-full bg-primary/90 flex items-center justify-center group-hover:scale-110 transition-all shadow-lg">
+                        <svg className="h-5 w-5 text-primary-foreground ml-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                      </div>
+                    </div>
+                    <div className="absolute top-2 left-2">
+                      <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white"><span className="mr-1 h-1 w-1 rounded-full bg-white animate-pulse" />LIVE</span>
+                    </div>
+                  </div>
+                  <div className="p-2.5">
+                    <p className="font-medium text-sm truncate">{ch.name}</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {ch.country && <span className="text-xs text-muted-foreground flex items-center gap-0.5"><Globe className="h-2.5 w-2.5" />{ch.country}</span>}
+                      {ch.category && <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 truncate max-w-[100px]">{ch.category}</Badge>}
+                    </div>
+                  </div>
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-8">
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }
