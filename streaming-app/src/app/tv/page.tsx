@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, Tv, Globe, Grid3X3, ChevronLeft, ChevronRight, X, Radio } from 'lucide-react';
+import { Search, Filter, Tv, Globe, Grid3X3, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +46,8 @@ export default function TVPage() {
   const [loading, setLoading] = useState(true);
   const [playingChannel, setPlayingChannel] = useState<TVChannel | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const fetchChannels = useCallback(async (p: number) => {
     setLoading(true);
@@ -151,7 +153,7 @@ export default function TVPage() {
           )}
         </AnimatePresence>
 
-        {loading ? (
+        {loading || !mounted ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {Array.from({ length: 20 }).map((_, i) => (
               <div key={i} className="aspect-video rounded-lg bg-muted animate-pulse" />
@@ -159,7 +161,9 @@ export default function TVPage() {
           </div>
         ) : channels.length === 0 ? (
           <div className="text-center py-16">
-            <Radio className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
+            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+              <Tv className="h-6 w-6 text-muted-foreground/50" />
+            </div>
             <p className="text-muted-foreground">No channels found</p>
             <p className="text-sm text-muted-foreground/60 mt-1">Try adjusting your search or filters</p>
             {(search || selectedCountry || selectedCategory) && <Button variant="outline" size="sm" onClick={clearFilters} className="mt-4">Clear Filters</Button>}
@@ -177,11 +181,11 @@ export default function TVPage() {
                     )}
                     <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
                       <div className="h-12 w-12 rounded-full bg-primary/90 flex items-center justify-center group-hover:scale-110 transition-all shadow-lg">
-                        <Radio className="h-5 w-5 text-primary-foreground ml-0.5" />
+                        <svg className="h-5 w-5 text-primary-foreground ml-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                       </div>
                     </div>
                     <div className="absolute top-2 left-2">
-                      <Badge variant="live" className="text-[10px] px-1.5 py-0 h-4"><span className="h-1 w-1 rounded-full bg-white mr-1 animate-pulse" />LIVE</Badge>
+                      <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white"><span className="mr-1 h-1 w-1 rounded-full bg-white animate-pulse" />LIVE</span>
                     </div>
                   </div>
                   <div className="p-2.5">
