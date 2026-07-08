@@ -1,32 +1,64 @@
 import { NextResponse } from 'next/server';
 
-const CHANNELS_API = 'https://iptv-org.github.io/api/channels.json';
-const STREAMS_API = 'https://iptv-org.github.io/api/streams.json';
+const M3U_URL = 'https://iptv-org.github.io/iptv/index.m3u';
 
-let channelsCache: any[] | null = null;
-let streamsCache: Map<string, string> | null = null;
-let lastFetch = 0;
-const CACHE_TTL = 3600000;
-
-async function fetchChannels() {
-  if (channelsCache && Date.now() - lastFetch < CACHE_TTL) return channelsCache;
-  const res = await fetch(CHANNELS_API, { next: { revalidate: 3600 } });
-  if (!res.ok) throw new Error(`Channels API error: ${res.status}`);
-  channelsCache = await res.json();
-  lastFetch = Date.now();
-  return channelsCache!;
+interface M3UChannel {
+  id: string;
+  name: string;
+  logo: string;
+  category: string;
+  country: string;
+  streamUrl: string;
 }
 
-async function fetchStreams() {
-  if (streamsCache) return streamsCache;
-  const res = await fetch(STREAMS_API, { next: { revalidate: 3600 } });
-  if (!res.ok) throw new Error(`Streams API error: ${res.status}`);
-  const data: any[] = await res.json();
-  streamsCache = new Map();
-  for (const s of data) {
-    if (s.url) streamsCache.set(s.channel, s.url);
+let channelsCache: M3UChannel[] | null = null;
+let cacheTime = 0;
+const CACHE_TTL = 3600000;
+
+function parseM3U(m3u: string): M3UChannel[] {
+  const lines = m3u.split('\n');
+  const channels: M3UChannel[] = [];
+  let idx = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line.startsWith('#EXTINF:')) continue;
+
+    const url = lines[i + 1]?.trim();
+    if (!url || url.startsWith('#')) continue;
+    i++;
+
+    const nameMatch = line.match(/,(.+)$/);
+    const name = nameMatch ? nameMatch[1].trim() : `Channel ${idx}`;
+    const logoMatch = line.match(/tvg-logo="([^"]*)"/);
+    const logo = logoMatch ? logoMatch[1] : '';
+    const groupMatch = line.match(/group-title="([^"]*)"/);
+    const category = groupMatch ? groupMatch[1] : '';
+    const idMatch = line.match(/tvg-id="([^"]*)"/);
+    const id = idMatch ? idMatch[1] : `ch_${idx}`;
+
+    let country = '';
+    if (id.includes('.')) {
+      const parts = id.split('.');
+      const code = parts[parts.length - 1]?.split('@')[0]?.toUpperCase() || '';
+      if (code.length === 2) country = code;
+    }
+
+    channels.push({ id: `${id}_${idx}`, name, logo, category, country, streamUrl: url });
+    idx++;
   }
-  return streamsCache;
+  return channels;
+}
+
+async function fetchChannels(): Promise<M3UChannel[]> {
+  if (channelsCache && Date.now() - cacheTime < CACHE_TTL) return channelsCache;
+
+  const res = await fetch(M3U_URL, { next: { revalidate: 3600 } });
+  if (!res.ok) throw new Error(`M3U fetch error: ${res.status}`);
+  const m3u = await res.text();
+  channelsCache = parseM3U(m3u);
+  cacheTime = Date.now();
+  return channelsCache!;
 }
 
 export async function GET(request: Request) {
@@ -38,42 +70,28 @@ export async function GET(request: Request) {
     const country = searchParams.get('country') || '';
     const category = searchParams.get('category') || '';
 
-    const [channels, streams] = await Promise.all([fetchChannels(), fetchStreams()]);
+    const all = await fetchChannels();
 
-    let filtered = channels;
+    let filtered = all;
     if (search) {
-      filtered = filtered.filter((c: any) =>
-        c.name?.toLowerCase().includes(search) ||
-        c.country?.toLowerCase().includes(search) ||
-        c.category?.toLowerCase().includes(search)
+      filtered = filtered.filter((c) =>
+        c.name.toLowerCase().includes(search) ||
+        c.country.toLowerCase().includes(search) ||
+        c.category.toLowerCase().includes(search)
       );
     }
-    if (country) {
-      filtered = filtered.filter((c: any) => c.country === country);
-    }
-    if (category) {
-      filtered = filtered.filter((c: any) => c.category === category);
-    }
+    if (country) filtered = filtered.filter((c) => c.country === country);
+    if (category) filtered = filtered.filter((c) => c.category === category);
 
     const total = filtered.length;
     const start = (page - 1) * limit;
     const paginated = filtered.slice(start, start + limit);
 
-    const result = paginated.map((c: any) => ({
-      id: c.id,
-      name: c.name,
-      country: c.country,
-      category: c.category,
-      logo: c.logo,
-      website: c.website,
-      streamUrl: streams.get(c.id) || null,
-    }));
-
-    const countries = [...new Set(channels.map((c: any) => c.country).filter(Boolean))].sort();
-    const categories = [...new Set(channels.map((c: any) => c.category).filter(Boolean))].sort();
+    const countries = [...new Set(all.map((c) => c.country).filter(Boolean))].sort();
+    const categories = [...new Set(all.map((c) => c.category).filter(Boolean))].sort();
 
     return NextResponse.json({
-      channels: result,
+      channels: paginated,
       total,
       page,
       limit,

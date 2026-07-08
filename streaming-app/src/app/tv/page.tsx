@@ -12,11 +12,10 @@ import { cn } from '@/lib/utils';
 interface TVChannel {
   id: string;
   name: string;
-  country: string;
-  category: string;
   logo: string;
-  website: string;
-  streamUrl: string | null;
+  category: string;
+  country: string;
+  streamUrl: string;
 }
 
 interface TVResponse {
@@ -168,30 +167,28 @@ export default function TVPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {channels.map((ch) => (
-              <motion.div key={ch.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.02 }}>
-                <button onClick={() => ch.streamUrl && setPlayingChannel(ch)} disabled={!ch.streamUrl} className={cn(
-                  'w-full text-left rounded-lg border bg-card overflow-hidden transition-all hover:shadow-md',
-                  ch.streamUrl ? 'cursor-pointer hover:border-primary/50' : 'cursor-not-allowed opacity-60'
-                )}>
+              <motion.div key={ch.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: 1.03 }}>
+                <button onClick={() => setPlayingChannel(ch)} className="w-full text-left rounded-lg border bg-card overflow-hidden transition-all hover:shadow-md hover:border-primary/50 cursor-pointer group">
                   <div className="aspect-video bg-muted relative flex items-center justify-center">
                     {ch.logo ? (
                       <img src={ch.logo} alt={ch.name} className="h-full w-full object-contain p-2" />
                     ) : (
                       <Tv className="h-8 w-8 text-muted-foreground/30" />
                     )}
-                    {ch.streamUrl && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/30 transition-colors">
-                        <div className="h-10 w-10 rounded-full bg-primary/90 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all">
-                          <Radio className="h-4 w-4 text-primary-foreground" />
-                        </div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                      <div className="h-12 w-12 rounded-full bg-primary/90 flex items-center justify-center group-hover:scale-110 transition-all shadow-lg">
+                        <Radio className="h-5 w-5 text-primary-foreground ml-0.5" />
                       </div>
-                    )}
+                    </div>
+                    <div className="absolute top-2 left-2">
+                      <Badge variant="live" className="text-[10px] px-1.5 py-0 h-4"><span className="h-1 w-1 rounded-full bg-white mr-1 animate-pulse" />LIVE</Badge>
+                    </div>
                   </div>
                   <div className="p-2.5">
                     <p className="font-medium text-sm truncate">{ch.name}</p>
                     <div className="flex items-center gap-1.5 mt-1">
                       {ch.country && <span className="text-xs text-muted-foreground flex items-center gap-0.5"><Globe className="h-2.5 w-2.5" />{ch.country}</span>}
-                      {ch.category && <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{ch.category}</Badge>}
+                      {ch.category && <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 truncate max-w-[100px]">{ch.category}</Badge>}
                     </div>
                   </div>
                 </button>
