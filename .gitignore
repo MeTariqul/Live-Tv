@@ -1,41 +1,39 @@
-# Node.js modules
-backend/node_modules/
-frontend/node_modules/
-tvstream/node_modules/
+# dependencies
+node_modules/
+.pnp
+.pnp.js
 
-# HLS segments (keep .gitkeep)
-media/hls/*
-!.gitkeep
-media/hls/live/*
-media/hls/live/mystream/*
-!media/hls/.gitkeep
-backend/media/hls/*
-backend/media/hls/live/*
-backend/media/hls/live/mystream/*
-!backend/media/hls/.gitkeep
+# next.js
+.next/
+out/
+
+# production
+build/
+
+# misc
+.DS_Store
+Thumbs.db
+*.pem
+
+# debug
+npm-debug.log*
+
+# local env files
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
 
 # Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.env
-.env.local
-.venv
 
 # Logs
 *.log
-npm-debug.log*
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Vercel
-.vercel
 
 # Temp files
 cookies.txt
