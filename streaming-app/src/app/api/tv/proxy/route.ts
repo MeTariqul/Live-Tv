@@ -1,16 +1,32 @@
 import { NextRequest } from 'next/server';
 
 function rewriteUrls(manifest: string, baseUrl: string): string {
-  return manifest.replace(/^(?!#)(.+)$/gm, (line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return line;
-    try {
-      const absolute = new URL(trimmed, baseUrl).href;
-      return `/api/tv/proxy?url=${encodeURIComponent(absolute)}`;
-    } catch {
-      return line;
+  const lines = manifest.split('\n');
+  const result: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith('#EXT-X-MEDIA:') && line.includes('URI=')) {
+      const rewritten = line.replace(/URI="([^"]+)"/g, (_, uri) => {
+        try {
+          const absolute = new URL(uri, baseUrl).href;
+          return `URI="/api/tv/proxy?url=${encodeURIComponent(absolute)}"`;
+        } catch { return `URI="${uri}"`; }
+      });
+      result.push(rewritten);
+    } else if (line.startsWith('#EXT-X-STREAM-INF:')) {
+      result.push(line);
+    } else if (!line.startsWith('#') && line.trim()) {
+      try {
+        const absolute = new URL(line.trim(), baseUrl).href;
+        result.push(`/api/tv/proxy?url=${encodeURIComponent(absolute)}`);
+      } catch {
+        result.push(line);
+      }
+    } else {
+      result.push(line);
     }
-  });
+  }
+  return result.join('\n');
 }
 
 export async function GET(request: NextRequest) {
