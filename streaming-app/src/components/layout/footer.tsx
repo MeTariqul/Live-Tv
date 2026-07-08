@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { SITE_NAME } from '@/lib/constants';
 
@@ -23,18 +25,9 @@ export function Footer() {
             </ul>
           </div>
           <div>
-            <h3 className="text-sm font-semibold mb-3">Social</h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-foreground transition-colors">YouTube</a></li>
-              <li><a href="#" className="hover:text-foreground transition-colors">Twitch</a></li>
-              <li><a href="#" className="hover:text-foreground transition-colors">Twitter</a></li>
-            </ul>
-          </div>
-          <div>
             <h3 className="text-sm font-semibold mb-3">Legal</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
-              <li><a href="#" className="hover:text-foreground transition-colors">Terms</a></li>
             </ul>
           </div>
         </div>

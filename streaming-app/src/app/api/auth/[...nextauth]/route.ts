@@ -17,12 +17,7 @@ const handler = NextAuth({
           credentials?.email === adminEmail &&
           credentials?.password === adminPassword
         ) {
-          return {
-            id: '1',
-            email: adminEmail,
-            name: 'Admin',
-            role: 'admin',
-          };
+          return { id: '1', email: adminEmail, name: 'Admin' };
         }
         return null;
       },
@@ -30,25 +25,16 @@ const handler = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.role = (user as any).role;
-      }
+      if (user) token.role = 'admin';
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).role = token.role;
-      }
+      if (session.user) (session.user as any).role = token.role;
       return session;
     },
   },
-  pages: {
-    signIn: '/admin/login',
-  },
-  session: {
-    strategy: 'jwt',
-    maxAge: 24 * 60 * 60,
-  },
+  pages: { signIn: '/admin/login' },
+  session: { strategy: 'jwt', maxAge: 24 * 60 * 60 },
   secret: process.env.NEXTAUTH_SECRET,
 });
 

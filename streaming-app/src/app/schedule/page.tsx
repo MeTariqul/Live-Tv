@@ -1,29 +1,15 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Calendar, Clock, Gamepad2 } from 'lucide-react';
+import { Clock, Gamepad2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useSchedule } from '@/hooks/use-data';
+import { useAppStore } from '@/stores/app';
 import { SCHEDULE_DAYS } from '@/lib/constants';
 
 export default function SchedulePage() {
-  const { data: schedule, isLoading } = useSchedule();
-
-  const grouped = SCHEDULE_DAYS.map((day) => ({
-    day,
-    entries: schedule?.filter((s) => s.day === day) || [],
-  }));
-
-  if (isLoading) {
-    return (
-      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-        <Skeleton className="h-8 w-48 mb-8" />
-        <div className="space-y-4">{Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
-      </div>
-    );
-  }
+  const schedule = useAppStore((s) => s.schedule);
+  const grouped = SCHEDULE_DAYS.map((day) => ({ day, entries: schedule.filter((s) => s.day === day) }));
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
@@ -37,18 +23,14 @@ export default function SchedulePage() {
                 <div className="flex items-center gap-4">
                   <div className="w-24 font-bold text-sm">{day}</div>
                   <div className="flex-1">
-                    {entries.length > 0 ? (
-                      entries.map((e) => (
-                        <div key={e.id} className="flex items-center gap-3">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">{e.start_time} - {e.end_time}</span>
-                          <span className="text-sm text-muted-foreground">{e.title}</span>
-                          {e.game && <Badge variant="secondary"><Gamepad2 className="mr-1 h-3 w-3" />{e.game}</Badge>}
-                        </div>
-                      ))
-                    ) : (
-                      <span className="text-sm text-muted-foreground">No stream scheduled</span>
-                    )}
+                    {entries.length > 0 ? entries.map((e) => (
+                      <div key={e.id} className="flex items-center gap-3">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">{e.start_time} - {e.end_time}</span>
+                        <span className="text-sm text-muted-foreground">{e.title}</span>
+                        {e.game && <Badge variant="secondary"><Gamepad2 className="mr-1 h-3 w-3" />{e.game}</Badge>}
+                      </div>
+                    )) : <span className="text-sm text-muted-foreground">No stream scheduled</span>}
                   </div>
                 </div>
               </CardContent>
