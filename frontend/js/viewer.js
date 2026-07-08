@@ -24,6 +24,17 @@
     language: localStorage.getItem('lang') || 'en',
     settings: {},
     lastChannelId: localStorage.getItem('lastChannelId') || null,
+    viewerCount: 0,
+    latency: 0,
+    theaterMode: false,
+    chatMessages: [],
+    chatUsername: localStorage.getItem('chatUsername') || '',
+    chatPollTimer: null,
+    watchHistory: JSON.parse(localStorage.getItem('watchHistory') || '[]'),
+    streamStartedAt: null,
+    lastSeen: {},
+    chatOpen: true,
+    infoOpen: false,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -118,6 +129,7 @@
       loadCurrentChannel();
       updateNowPlayingOverlay();
       updateUpNextOverlay();
+      updateInfoPanel();
     } catch {}
   }
 
@@ -179,6 +191,8 @@
     localStorage.setItem('lastChannelId', channelId);
     loadCurrentChannel();
     renderChannelList();
+    updateInfoPanel();
+    updateChannelTitle();
     if (window.innerWidth <= 768) {
       $('sidebar').classList.remove('open');
       APP.state.sidebarOpen = false;
@@ -205,6 +219,7 @@
     if (offlineScreen) offlineScreen.classList.add('hidden');
     loadHlsStream(ch.playback_url, ch.id);
     document.title = ch.name + ' - ' + (APP.state.settings.platform_name || 'My Live TV');
+    updateChannelTitle();
   }
 
   function destroyHls() {
@@ -223,10 +238,13 @@
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        maxBufferLength: 30,
+        maxBufferLength: 10,
         backBufferLength: 0,
-        liveSyncDurationCount: 3,
+        liveSyncDurationCount: 1,
+        liveMaxLatencyDurationCount: 3,
+        lowLatencyMode: true,
         enableWorker: true,
+        maxLoadingDelay: 0,
       });
 
       hls.on(Hls.Events.MEDIA_ATTACHED, () => {
@@ -244,6 +262,8 @@
           name: l.height ? l.height + 'p' : (l.bitrate ? Math.round(l.bitrate / 1000) + 'k' : 'Auto'),
         }));
         updateQualitySelector();
+        fetchViewerCount();
+        fetchChannelInfo();
       });
 
       hls.on(Hls.Events.LEVEL_SWITCHED, (e, data) => {
@@ -283,6 +303,8 @@
         APP.state.isLive = true;
         updatePlayerUI();
         video.play().catch(() => {});
+        fetchViewerCount();
+        fetchChannelInfo();
       });
       video.addEventListener('error', () => {
         APP.state.isLive = false;
@@ -311,6 +333,91 @@
     if ($('progressBuffered')) $('progressBuffered').style.width = '0%';
     if ($('currentTime')) $('currentTime').textContent = '0:00';
     if ($('duration')) $('duration').textContent = '0:00';
+  }
+
+  /* ─── Viewer Count ─── */
+  async function fetchViewerCount() {
+    if (!APP.state.currentChannelId || !APP.state.isLive) {
+      APP.state.viewerCount = 0;
+      updateViewerDisplay();
+      return;
+    }
+    try {
+      const data = await apiJSON('/api/analytics/channels/' + APP.state.currentChannelId + '/viewers');
+      APP.state.viewerCount = data.viewers || 0;
+      updateViewerDisplay();
+    } catch {
+      APP.state.viewerCount = 0;
+      updateViewerDisplay();
+    }
+  }
+
+  function updateViewerDisplay() {
+    const el = $('viewerCount');
+    if (el) {
+      el.textContent = APP.state.viewerCount.toLocaleString() + ' viewers';
+      el.style.display = APP.state.isLive ? '' : 'none';
+    }
+  }
+
+  /* ─── Latency ─── */
+  function updateLatency() {
+    const video = $('video');
+    const el = $('latencyIndicator');
+    if (!video || !el) return;
+    if (!APP.state.isLive || !video.duration || !isFinite(video.duration)) {
+      el.style.display = 'none';
+      return;
+    }
+    const liveEdge = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : video.duration;
+    const latency = liveEdge - video.currentTime;
+    APP.state.latency = Math.round(latency * 10) / 10;
+    el.textContent = APP.state.latency + 's';
+    el.style.display = '';
+    el.className = 'latency-badge ' + (APP.state.latency < 3 ? 'good' : APP.state.latency < 6 ? 'ok' : 'high');
+  }
+
+  /* ─── Channel Info Panel ─── */
+  async function fetchChannelInfo() {
+    updateInfoPanel();
+    APP.state.streamStartedAt = APP.state.channels.find(c => c.id === APP.state.currentChannelId)?.stream_started_at;
+    updateStreamUptime();
+  }
+
+  function updateInfoPanel() {
+    const ch = APP.state.channels.find(c => c.id === APP.state.currentChannelId);
+    const el = $('channelInfoPanel');
+    if (!el || !ch) return;
+    el.innerHTML = `
+      <div class="info-row"><span class="info-label">Status</span><span class="info-value"><span class="status-dot ${ch.status === 'active' ? 'live' : 'idle'}" style="display:inline-block;"></span> ${ch.status === 'active' ? 'Live' : 'Offline'}</span></div>
+      <div class="info-row"><span class="info-label">Category</span><span class="info-value">${escapeHtml(ch.category || 'General')}</span></div>
+      ${ch.stream_title ? '<div class="info-row"><span class="info-label">Title</span><span class="info-value">' + escapeHtml(ch.stream_title) + '</span></div>' : ''}
+      ${ch.description ? '<div class="info-row"><span class="info-label">Description</span><span class="info-value">' + escapeHtml(ch.description) + '</span></div>' : ''}
+      <div class="info-row"><span class="info-label">Viewers</span><span class="info-value">${APP.state.viewerCount.toLocaleString()}</span></div>
+      <div id="streamUptime"></div>
+    `;
+    updateStreamUptime();
+  }
+
+  function updateStreamUptime() {
+    const el = $('streamUptime');
+    if (!el) return;
+    if (!APP.state.streamStartedAt || !APP.state.isLive) { el.innerHTML = ''; return; }
+    try {
+      const started = new Date(APP.state.streamStartedAt);
+      const diff = Math.floor((Date.now() - started.getTime()) / 1000);
+      const h = Math.floor(diff / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      const s = diff % 60;
+      el.innerHTML = `<div class="info-row"><span class="info-label">Uptime</span><span class="info-value">${h}h ${m}m ${s}s</span></div>`;
+    } catch { el.innerHTML = ''; }
+  }
+
+  function updateChannelTitle() {
+    const ch = APP.state.channels.find(c => c.id === APP.state.currentChannelId);
+    const el = $('channelTitleOverlay');
+    if (!el || !ch) return;
+    el.innerHTML = (ch.stream_title ? '<div class="stream-title">' + escapeHtml(ch.stream_title) + '</div>' : '') + '<div class="stream-channel">' + escapeHtml(ch.name) + '</div>';
   }
 
   /* ─── Video Controls ─── */
@@ -412,31 +519,6 @@
         if (fsBtn) fsBtn.click();
       });
     }
-
-    document.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      const v = $('video');
-      switch (e.key) {
-        case ' ':
-          e.preventDefault();
-          if (v) { if (v.paused) v.play(); else v.pause(); }
-          break;
-        case 'f': case 'F':
-          if (fsBtn) fsBtn.click();
-          break;
-        case 'm': case 'M':
-          if (v) v.muted = !v.muted;
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          if (v) v.volume = Math.min(1, v.volume + 0.1);
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          if (v) v.volume = Math.max(0, v.volume - 0.1);
-          break;
-      }
-    });
   }
 
   function updateQualitySelector() {
@@ -459,6 +541,207 @@
     const s = Math.floor(seconds % 60);
     if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
     return m + ':' + String(s).padStart(2, '0');
+  }
+
+  /* ─── Theater Mode ─── */
+  function toggleTheaterMode() {
+    APP.state.theaterMode = !APP.state.theaterMode;
+    const wrapper = $('playerWrapper');
+    const sidebar = $('sidebar');
+    const infoBar = qs('.info-bar');
+    const chatPanel = $('chatPanel');
+    const container = qs('.content-area');
+    if (APP.state.theaterMode) {
+      if (sidebar) sidebar.style.display = 'none';
+      if (wrapper) wrapper.style.height = 'calc(100vh - 48px)';
+      if (container) container.style.background = '#000';
+      if (chatPanel) chatPanel.style.display = 'flex';
+    } else {
+      if (sidebar) sidebar.style.display = '';
+      if (wrapper) wrapper.style.height = '';
+      if (container) container.style.background = '';
+      if (chatPanel) chatPanel.style.display = APP.state.chatOpen ? 'flex' : 'none';
+    }
+  }
+
+  /* ─── Picture-in-Picture ─── */
+  async function togglePiP() {
+    const video = $('video');
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled) {
+        await video.requestPictureInPicture();
+      }
+    } catch (e) {
+      showToast('PiP not supported', 'error');
+    }
+  }
+
+  /* ─── Watch History ─── */
+  function addToWatchHistory(channelId) {
+    const history = APP.state.watchHistory;
+    const existing = history.findIndex(h => h.channel_id === channelId);
+    if (existing >= 0) {
+      history[existing].last_watched = new Date().toISOString();
+      history[existing].count = (history[existing].count || 0) + 1;
+    } else {
+      history.push({ channel_id: channelId, last_watched: new Date().toISOString(), count: 1 });
+    }
+    if (history.length > 50) history.splice(0, history.length - 50);
+    localStorage.setItem('watchHistory', JSON.stringify(history));
+  }
+
+  /* ─── Chat ─── */
+  function setupChat() {
+    const input = $('chatInput');
+    const sendBtn = $('chatSendBtn');
+    if (!input || !sendBtn) return;
+
+    const doSend = async () => {
+      const msg = input.value.trim();
+      if (!msg) return;
+      if (!APP.state.chatUsername) {
+        const name = prompt('Choose a chat display name (max 30 chars):');
+        if (!name || !name.trim()) return;
+        APP.state.chatUsername = name.trim().slice(0, 30);
+        localStorage.setItem('chatUsername', APP.state.chatUsername);
+      }
+      if (!APP.state.currentChannelId) return;
+      try {
+        await api('/api/channels/' + APP.state.currentChannelId + '/chat', {
+          method: 'POST',
+          body: JSON.stringify({ username: APP.state.chatUsername, message: msg }),
+        });
+        input.value = '';
+        fetchChatMessages();
+      } catch (e) {
+        showToast(e.message || 'Failed to send', 'error');
+      }
+    };
+
+    sendBtn.addEventListener('click', doSend);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(); });
+  }
+
+  async function fetchChatMessages() {
+    if (!APP.state.currentChannelId) return;
+    const lastTs = APP.state.chatMessages.length > 0 ? APP.state.chatMessages[APP.state.chatMessages.length - 1].timestamp : '';
+    try {
+      const url = '/api/channels/' + APP.state.currentChannelId + '/chat' + (lastTs ? '?since=' + encodeURIComponent(lastTs) : '');
+      const msgs = await apiJSON(url);
+      if (msgs.length > 0) {
+        APP.state.chatMessages = APP.state.chatMessages.concat(msgs);
+        if (APP.state.chatMessages.length > 200) {
+          APP.state.chatMessages = APP.state.chatMessages.slice(-200);
+        }
+        renderChat();
+      }
+    } catch {}
+  }
+
+  function renderChat() {
+    const container = $('chatMessages');
+    if (!container) return;
+    const wasScrolled = container.scrollTop + container.clientHeight >= container.scrollHeight - 20;
+    container.innerHTML = '';
+    APP.state.chatMessages.forEach(msg => {
+      const div = document.createElement('div');
+      div.className = 'chat-msg';
+      div.innerHTML = '<span class="chat-user">' + escapeHtml(msg.username) + ':</span> ' + escapeHtml(msg.message);
+      container.appendChild(div);
+    });
+    if (wasScrolled) container.scrollTop = container.scrollHeight;
+  }
+
+  /* ─── Keyboard Shortcuts ─── */
+  function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      const v = $('video');
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          if (v) { if (v.paused) v.play(); else v.pause(); }
+          break;
+        case 'f': case 'F':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            $('fullscreenBtn')?.click();
+          }
+          break;
+        case 'm': case 'M':
+          if (v) v.muted = !v.muted;
+          break;
+        case 't': case 'T':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            toggleTheaterMode();
+          }
+          break;
+        case 'p': case 'P':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            togglePiP();
+          }
+          break;
+        case 'c': case 'C':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            toggleChatPanel();
+          }
+          break;
+        case 'i': case 'I':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            toggleInfoPanel();
+          }
+          break;
+        case '?':
+          e.preventDefault();
+          showModal('shortcutsModal');
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          if (v) v.volume = Math.min(1, v.volume + 0.1);
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          if (v) v.volume = Math.max(0, v.volume - 0.1);
+          break;
+        case 'ArrowRight':
+          if (!v || !v.duration) { e.preventDefault(); selectNextChannel(1); }
+          break;
+        case 'ArrowLeft':
+          if (!v || !v.duration) { e.preventDefault(); selectNextChannel(-1); }
+          break;
+        case 'Escape':
+          hideModal('shortcutsModal');
+          break;
+      }
+    });
+  }
+
+  function selectNextChannel(dir) {
+    const chs = APP.state.channels;
+    if (chs.length === 0) return;
+    const idx = chs.findIndex(c => c.id === APP.state.currentChannelId);
+    const next = (idx + dir + chs.length) % chs.length;
+    selectChannel(chs[next].id);
+  }
+
+  /* ─── Chat & Info Panel Toggles ─── */
+  function toggleChatPanel() {
+    APP.state.chatOpen = !APP.state.chatOpen;
+    const panel = $('chatPanel');
+    if (panel) panel.style.display = APP.state.chatOpen ? 'flex' : 'none';
+  }
+
+  function toggleInfoPanel() {
+    APP.state.infoOpen = !APP.state.infoOpen;
+    const panel = $('infoPanel');
+    if (panel) panel.classList.toggle('open');
   }
 
   /* ─── Now Playing / Up Next ─── */
@@ -746,6 +1029,8 @@
     setupVideoControls();
     setupTabs();
     setupModalListeners();
+    setupChat();
+    setupKeyboardShortcuts();
 
     await fetchChannels();
 
@@ -764,11 +1049,16 @@
     }
 
     renderChannelList();
+    updateChannelTitle();
 
     setInterval(fetchChannels, 10000);
     setInterval(fetchNowPlaying, 30000);
     setInterval(fetchUpNext, 30000);
     setInterval(fetchNotifications, 30000);
+    setInterval(fetchViewerCount, 5000);
+    setInterval(updateLatency, 1000);
+    setInterval(fetchChatMessages, 3000);
+    setInterval(updateStreamUptime, 1000);
 
     if (Notification.permission === 'default') {
       Notification.requestPermission();

@@ -36,6 +36,7 @@ from routers import (
     analytics,
     settings as settings_router,
     webhook,
+    chat,
 )
 
 logging.basicConfig(
@@ -143,6 +144,7 @@ app.include_router(admin_dashboard.router)
 app.include_router(analytics.router)
 app.include_router(settings_router.router)
 app.include_router(webhook.router)
+app.include_router(chat.router)
 
 
 @app.get('/api/health')

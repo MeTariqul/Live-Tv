@@ -53,3 +53,39 @@ async def get_analytics_dashboard(current_user: dict = Depends(get_current_admin
         'concurrent_viewers': concurrent,
         'total_viewers': sum(c['viewers'] for c in concurrent),
     })
+
+
+@router.get('/channels/{channel_id}/viewers')
+async def get_channel_viewers(channel_id: str):
+    channels = await kv_get_json('channels') or []
+    ch = next((c for c in channels if c.get('id') == channel_id), None)
+    if not ch:
+        raise HTTPException(status_code=404, detail='Channel not found')
+
+    viewers = 0
+    stream_id = ch.get('stream_id')
+    if stream_id and ch.get('status') == 'active':
+        try:
+            stats = await get_live_stream_stats(stream_id)
+            viewers = stats.get('current_viewers', 0) or stats.get('viewer_count', 0) or 0
+        except Exception:
+            pass
+
+    return JSONResponse({'channel_id': channel_id, 'viewers': viewers})
+
+
+@router.get('/all-viewers')
+async def get_all_channel_viewers():
+    channels = await kv_get_json('channels') or []
+    results = []
+    for ch in channels:
+        viewers = 0
+        stream_id = ch.get('stream_id')
+        if stream_id and ch.get('status') == 'active':
+            try:
+                stats = await get_live_stream_stats(stream_id)
+                viewers = stats.get('current_viewers', 0) or stats.get('viewer_count', 0) or 0
+            except Exception:
+                pass
+        results.append({'channel_id': ch.get('id'), 'viewers': viewers})
+    return JSONResponse(results)

@@ -80,9 +80,24 @@ async def mux_webhook(request: Request):
         if ch.get('stream_id') == stream_id:
             if event_type in ('live_stream.connected', 'live_stream.active'):
                 ch['status'] = 'active'
+                if not ch.get('stream_started_at'):
+                    ch['stream_started_at'] = datetime.now(timezone.utc).isoformat()
+                title = ch.get('stream_title') or ch.get('name')
+                try:
+                    notifs = await kv_get_json('notifications') or []
+                    notifs.append({
+                        'id': f'notif_{event_id[:12]}',
+                        'message': f'🔴 {title} is now LIVE!',
+                        'channel_id': ch.get('id'),
+                        'created_at': datetime.now(timezone.utc).isoformat(),
+                    })
+                    await kv_set_json('notifications', notifs[-200:], ex=86400 * 7)
+                except Exception:
+                    pass
                 logger.info('Channel %s is now LIVE', ch.get('name'))
             elif event_type in ('live_stream.disconnected', 'live_stream.idle'):
                 ch['status'] = 'idle'
+                ch['stream_started_at'] = None
                 logger.info('Channel %s is now IDLE', ch.get('name'))
             elif event_type == 'live_stream.recording':
                 if asset_id:

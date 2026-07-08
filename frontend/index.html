@@ -24,6 +24,7 @@
         </div>
       </div>
       <div class="header-right">
+        <button class="btn btn-sm btn-ghost" onclick="showModal('shortcutsModal')" title="Keyboard Shortcuts">?&#8984;</button>
         <button class="btn btn-sm btn-ghost" onclick="window.location.href='privacy.html'">Privacy</button>
       </div>
     </header>
@@ -50,6 +51,7 @@
       <div class="content-area">
         <div class="player-wrapper" id="playerWrapper">
           <video id="video" autoplay muted playsinline></video>
+          <div class="channel-title-overlay" id="channelTitleOverlay"></div>
           <div class="now-playing-overlay" id="nowPlayingOverlay"></div>
           <div class="offline-screen" id="offlineScreen">
             <div class="offline-content">
@@ -76,11 +78,17 @@
                 <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1" />
               </div>
               <div style="flex:1;"></div>
+              <span class="latency-badge" id="latencyIndicator" style="display:none;"></span>
+              <span id="viewerCount" style="font-size:11px;color:rgba(255,255,255,0.6);display:none;"></span>
               <span id="liveIndicator" class="badge badge-live hidden" style="display:none;">LIVE</span>
               <span id="upNextInfo" style="font-size:11px;color:rgba(255,255,255,0.6);display:none;"></span>
               <select class="quality-select" id="qualitySelect"></select>
               <button class="control-btn" id="refreshBtn" title="Refresh stream">&#x21BB;</button>
-              <button class="control-btn" id="fullscreenBtn" title="Fullscreen">&#x26F6;</button>
+              <button class="control-btn" id="theaterBtn" title="Theater mode (T)">&#x2606;</button>
+              <button class="control-btn" id="pipBtn" title="Picture-in-Picture (P)" onclick="togglePiP()">&#x25A3;</button>
+              <button class="control-btn" id="chatToggleBtn" title="Toggle Chat (C)" onclick="toggleChatPanel()">&#x1F4AC;</button>
+              <button class="control-btn" id="infoBtn" title="Channel Info (I)" onclick="toggleInfoPanel()">&#x2139;</button>
+              <button class="control-btn" id="fullscreenBtn" title="Fullscreen (F)">&#x26F6;</button>
             </div>
           </div>
         </div>
@@ -91,11 +99,33 @@
             <span id="channelStatus"></span>
           </div>
           <div class="info-bar-right">
+            <span style="font-size:11px;color:var(--text-muted);">Press ? for shortcuts</span>
             <span style="font-size:11px;color:var(--text-muted);">My Live TV v2.0</span>
           </div>
         </div>
       </div>
+
+      <!-- Chat Panel -->
+      <div class="chat-panel" id="chatPanel">
+        <div class="chat-header">
+          <span>Live Chat</span>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Type a message..." maxlength="500" />
+          <button class="btn btn-sm btn-primary" id="chatSendBtn">Send</button>
+        </div>
+      </div>
     </div>
+  </div>
+
+  <!-- Channel Info Slide Panel -->
+  <div class="info-panel" id="infoPanel">
+    <div class="info-panel-header">
+      <span>Channel Info</span>
+      <button class="btn btn-sm btn-ghost" onclick="toggleInfoPanel()">&times;</button>
+    </div>
+    <div id="channelInfoPanel"></div>
   </div>
 
   <!-- EPG Modal -->
@@ -120,6 +150,28 @@
     </div>
   </div>
 
+  <!-- Keyboard Shortcuts Modal -->
+  <div class="modal-overlay" id="shortcutsModal">
+    <div class="modal" style="max-width:500px;position:relative;">
+      <button class="modal-close" onclick="hideModal('shortcutsModal')">&times;</button>
+      <h2>Keyboard Shortcuts</h2>
+      <div class="shortcuts-grid">
+        <div class="shortcut-item"><kbd>Space</kbd><span>Play / Pause</span></div>
+        <div class="shortcut-item"><kbd>F</kbd><span>Fullscreen</span></div>
+        <div class="shortcut-item"><kbd>M</kbd><span>Mute</span></div>
+        <div class="shortcut-item"><kbd>T</kbd><span>Theater Mode</span></div>
+        <div class="shortcut-item"><kbd>P</kbd><span>Picture-in-Picture</span></div>
+        <div class="shortcut-item"><kbd>C</kbd><span>Toggle Chat</span></div>
+        <div class="shortcut-item"><kbd>I</kbd><span>Channel Info</span></div>
+        <div class="shortcut-item"><kbd>?</kbd><span>This Shortcuts Panel</span></div>
+        <div class="shortcut-item"><kbd>&uarr;</kbd><span>Volume Up</span></div>
+        <div class="shortcut-item"><kbd>&darr;</kbd><span>Volume Down</span></div>
+        <div class="shortcut-item"><kbd>&larr; / &rarr;</kbd><span>Switch Channel</span></div>
+        <div class="shortcut-item"><kbd>Esc</kbd><span>Close Modal</span></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     window.BACKEND_URL = window.location.origin === 'http://localhost:3001' ? 'http://localhost:3000' : window.location.origin;
 
@@ -139,6 +191,12 @@
       if (!video) return;
       if (video.paused) video.play(); else video.pause();
     }
+
+    const theaterBtn = document.getElementById('theaterBtn');
+    if (theaterBtn) theaterBtn.addEventListener('click', () => {
+      if (typeof toggleTheaterMode === 'function') toggleTheaterMode();
+      else if (typeof window.toggleTheaterMode === 'function') window.toggleTheaterMode();
+    });
   </script>
   <script src="js/viewer.js"></script>
 </body>

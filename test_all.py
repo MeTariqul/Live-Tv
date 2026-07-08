@@ -153,7 +153,96 @@ def t_public_recordings():
     assert r.status_code == 200
 test('Public recordings', t_public_recordings)
 
-# ==================== RESULTS ====================
+# ==================== GAME STREAMING TESTS ====================
+
+def t_update_channel_stream_title():
+    r = httpx.put(f'{base}/api/admin/channels/{channel_ids[0]}',
+                   json={'stream_title': 'Playing Valorant Ranked', 'description': 'Road to Radiant'},
+                   cookies=admin_cookies, timeout=5)
+    assert r.status_code == 200
+    assert r.json()['stream_title'] == 'Playing Valorant Ranked'
+    assert r.json()['description'] == 'Road to Radiant'
+test('Update stream title', t_update_channel_stream_title)
+
+def t_admin_channels_has_stream_title():
+    r = httpx.get(f'{base}/api/admin/channels', cookies=admin_cookies, timeout=5)
+    chs = r.json()
+    ch = next((c for c in chs if c['id'] == channel_ids[0]), None)
+    assert ch is not None
+    assert ch['stream_title'] == 'Playing Valorant Ranked'
+    assert ch['description'] == 'Road to Radiant'
+test('Admin channels has stream_title', t_admin_channels_has_stream_title)
+
+def t_public_channels_has_stream_title():
+    r = httpx.get(f'{base}/api/channels', timeout=5)
+    chs = r.json()
+    assert any('stream_title' in c for c in chs)
+    assert any('description' in c for c in chs)
+    assert any('stream_started_at' in c for c in chs)
+test('Public channels has stream_title', t_public_channels_has_stream_title)
+
+def t_public_viewer_count():
+    r = httpx.get(f'{base}/api/analytics/channels/{channel_ids[0]}/viewers', timeout=5)
+    assert r.status_code == 200
+    data = r.json()
+    assert 'viewers' in data
+    assert data['viewers'] == 0  # no active stream in dev mode
+test('Public viewer count', t_public_viewer_count)
+
+def t_chat_send():
+    r = httpx.post(f'{base}/api/channels/{channel_ids[0]}/chat',
+                   json={'username': 'TestUser', 'message': 'Hello world'}, timeout=5)
+    assert r.status_code == 201
+    data = r.json()
+    assert data['username'] == 'TestUser'
+    assert data['message'] == 'Hello world'
+    assert 'id' in data
+    assert 'timestamp' in data
+test('Chat send message', t_chat_send)
+
+def t_chat_rate_limit():
+    import httpx as _httpx
+    import time as _time
+    client = _httpx.Client()
+    r1 = client.post(f'{base}/api/channels/{channel_ids[0]}/chat',
+                     json={'username': 'RateLimiter', 'message': 'First'}, timeout=5)
+    assert r1.status_code == 201
+    _time.sleep(0.1)
+    r2 = client.post(f'{base}/api/channels/{channel_ids[0]}/chat',
+                     json={'username': 'RateLimiter', 'message': 'Too fast'}, timeout=5)
+    assert r2.status_code == 429, f'Expected 429, got {r2.status_code}: {r2.text}'
+test('Chat rate limiting', t_chat_rate_limit)
+
+def t_chat_poll():
+    r = httpx.get(f'{base}/api/channels/{channel_ids[0]}/chat', timeout=5)
+    assert r.status_code == 200
+    msgs = r.json()
+    assert len(msgs) >= 1, f'Expected at least 1 message, got {len(msgs)}'
+    assert any(m['message'] == 'Hello world' for m in msgs), 'Hello world message not found'
+test('Chat poll messages', t_chat_poll)
+
+def t_chat_poll_since():
+    ts = datetime.now(timezone.utc).isoformat()
+    r = httpx.get(f'{base}/api/channels/{channel_ids[0]}/chat?since={ts}', timeout=5)
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+test('Chat poll with since param', t_chat_poll_since)
+
+def t_chat_channel_not_found():
+    r = httpx.post(f'{base}/api/channels/nonexistent/chat',
+                   json={'username': 'X', 'message': 'Y'}, timeout=5)
+    assert r.status_code == 404
+test('Chat channel not found', t_chat_channel_not_found)
+
+def t_all_viewers():
+    r = httpx.get(f'{base}/api/analytics/all-viewers', timeout=5)
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) >= 3
+    assert all('channel_id' in v and 'viewers' in v for v in data)
+test('All viewers endpoint', t_all_viewers)
+
+# ==================== CLEANUP ====================
 print('=' * 55)
 print('  FEATURE TEST RESULTS')
 print('=' * 55)

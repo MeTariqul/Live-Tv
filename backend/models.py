@@ -19,6 +19,8 @@ class UpdateChannelRequest(BaseModel):
     category: Optional[str] = None
     order: Optional[int] = None
     is_mature: Optional[bool] = None
+    stream_title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
 
 
 class ProgramCreate(BaseModel):
@@ -65,6 +67,11 @@ class RecordingsUpdateRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     published: Optional[bool] = None
+
+
+class ChatMessage(BaseModel):
+    username: str = Field(min_length=1, max_length=30)
+    message: str = Field(min_length=1, max_length=500)
 
 
 class SubtitleUploadResponse(BaseModel):

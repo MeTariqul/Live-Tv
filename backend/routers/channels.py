@@ -23,6 +23,9 @@ def _apply_defaults(ch: dict) -> dict:
     ch.setdefault('order', 999)
     ch.setdefault('icon_url', '')
     ch.setdefault('is_mature', False)
+    ch.setdefault('stream_title', '')
+    ch.setdefault('description', '')
+    ch.setdefault('stream_started_at', None)
     ch.setdefault('created_at', datetime.now(timezone.utc).isoformat())
     return ch
 
@@ -48,7 +51,26 @@ async def _find_channel_index(channels: list, channel_id: str) -> Optional[int]:
 @router.get('/admin/channels')
 async def admin_get_channels(current_user: dict = Depends(get_current_admin)):
     channels = await _get_channels()
-    return JSONResponse(channels)
+    result = []
+    for ch in channels:
+        result.append({
+            'id': ch.get('id'),
+            'name': ch.get('name'),
+            'category': ch.get('category', 'General'),
+            'order': ch.get('order', 999),
+            'is_mature': ch.get('is_mature', False),
+            'stream_id': ch.get('stream_id', ''),
+            'stream_key': ch.get('stream_key', ''),
+            'rtmp_url': ch.get('rtmp_url', ''),
+            'playback_url': ch.get('playback_url'),
+            'status': ch.get('status', 'idle'),
+            'icon_url': ch.get('icon_url', ''),
+            'stream_title': ch.get('stream_title', ''),
+            'description': ch.get('description', ''),
+            'stream_started_at': ch.get('stream_started_at'),
+            'created_at': ch.get('created_at'),
+        })
+    return JSONResponse(result)
 
 
 @router.post('/admin/channels')
@@ -107,6 +129,10 @@ async def admin_update_channel(channel_id: str, body: UpdateChannelRequest, curr
         ch['order'] = body.order
     if body.is_mature is not None:
         ch['is_mature'] = body.is_mature
+    if body.stream_title is not None:
+        ch['stream_title'] = body.stream_title.strip()
+    if body.description is not None:
+        ch['description'] = body.description.strip()
 
     channels[idx] = ch
     await _save_channels(channels)
@@ -166,6 +192,9 @@ async def get_public_channels(request: Request):
             'order': ch.get('order', 999),
             'icon_url': ch.get('icon_url', ''),
             'is_mature': ch.get('is_mature', False),
+            'stream_title': ch.get('stream_title', ''),
+            'description': ch.get('description', ''),
+            'stream_started_at': ch.get('stream_started_at'),
         }
         if ch.get('status') == 'active' and ch.get('playback_url'):
             public['playback_url'] = ch.get('playback_url')

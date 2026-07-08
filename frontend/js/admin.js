@@ -206,10 +206,17 @@
     if (!name) return;
     const category = prompt('Category:', ch.category || 'General');
     const order = prompt('Order (number):', String(ch.order || 999));
+    const stream_title = prompt('Stream title (shown to viewers while live):', ch.stream_title || '');
+    const description = prompt('Channel description:', ch.description || '');
     try {
       await apiJSON('/api/admin/channels/' + id, {
         method: 'PUT',
-        body: JSON.stringify({ name, category, order: order ? parseInt(order) : 999 }),
+        body: JSON.stringify({
+          name, category,
+          order: order ? parseInt(order) : 999,
+          stream_title: stream_title || '',
+          description: description || '',
+        }),
       });
       showToast('Channel updated', 'success');
       fetchChannels();
